@@ -24,6 +24,7 @@ import {
   Print24Regular,
 } from '@fluentui/react-icons';
 import { useState } from 'react';
+import { StarRating } from './StarRating';
 import type { Recipe } from '../types';
 
 const useStyles = makeStyles({
@@ -263,6 +264,11 @@ export function RecipeDetail({ recipe, onBack, onEdit, onDelete }: RecipeDetailP
           <Food24Regular aria-hidden="true" />
           <span>{recipe.servings} servings</span>
         </span>
+        {(recipe.rating !== undefined && recipe.rating > 0) && (
+          <span className={styles.metaItem}>
+            <StarRating rating={recipe.rating} readonly size="small" showEmpty />
+          </span>
+        )}
       </div>
 
       {recipe.tags.length > 0 && (

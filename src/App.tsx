@@ -9,11 +9,20 @@ import {
   MessageBar,
   MessageBarBody,
   MessageBarTitle,
+  Button,
+  Toast,
+  ToastTitle,
+  ToastBody,
+  Toaster,
+  useToastController,
+  useId,
 } from '@fluentui/react-components';
+import { Filter24Regular, Dismiss24Regular } from '@fluentui/react-icons';
 import { DatabaseProvider, useDatabase } from './context/DatabaseContext';
-import { Header, RecipeList, RecipeDetail, RecipeForm } from './components';
+import { Header, RecipeList, RecipeDetail, RecipeForm, FilterPanel, ErrorBoundary } from './components';
 import { useRecipes, useDebouncedValue } from './hooks';
-import type { Recipe, RecipeFormData } from './types';
+import { downloadDatabaseFile, importDatabaseFile, downloadRecipesAsJson, importRecipesFromJson } from './db/database';
+import type { Recipe, RecipeFormData, RecipeSearchParams } from './types';
 
 const useStyles = makeStyles({
   app: {
@@ -49,6 +58,58 @@ const useStyles = makeStyles({
       borderRadius: tokens.borderRadiusMedium,
     },
   },
+  mainLayout: {
+    display: 'flex',
+    gap: tokens.spacingHorizontalL,
+    padding: tokens.spacingVerticalL,
+    '@media (max-width: 768px)': {
+      flexDirection: 'column',
+    },
+  },
+  sidebar: {
+    width: '280px',
+    flexShrink: 0,
+    // Add top margin to align with recipe cards (matching the view toggle header height)
+    marginTop: `calc(32px + ${tokens.spacingVerticalM})`,
+    '@media (max-width: 768px)': {
+      width: '100%',
+      marginTop: 0,
+    },
+  },
+  content: {
+    flex: 1,
+    minWidth: 0,
+  },
+  filterToggle: {
+    display: 'none',
+    marginBottom: tokens.spacingVerticalM,
+    '@media (max-width: 768px)': {
+      display: 'flex',
+    },
+  },
+  filterBadge: {
+    marginLeft: tokens.spacingHorizontalS,
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
+    borderRadius: '50%',
+    minWidth: '20px',
+    height: '20px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: tokens.fontSizeBase200,
+  },
+  desktopSidebar: {
+    '@media (max-width: 768px)': {
+      display: 'none',
+    },
+  },
+  mobileSidebar: {
+    display: 'none',
+    '@media (max-width: 768px)': {
+      display: 'block',
+    },
+  },
 });
 
 type View = 'list' | 'detail';
@@ -65,6 +126,7 @@ function AppContent() {
     editRecipe,
     removeRecipe,
     getTags,
+    getIngredients,
   } = useRecipes();
 
   const [view, setView] = useState<View>('list');
@@ -72,15 +134,61 @@ function AppContent() {
   const [editingRecipe, setEditingRecipe] = useState<Recipe | undefined>();
   const [formOpen, setFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Filter state
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
+  const [minRating, setMinRating] = useState<number>(0);
+  const [sortBy, setSortBy] = useState<RecipeSearchParams['sortBy']>('updatedAt');
+  const [sortOrder, setSortOrder] = useState<RecipeSearchParams['sortOrder']>('desc');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
-  // Fetch recipes when database is ready or search changes
+  // Calculate active filter count for badge
+  const activeFilterCount = selectedTags.length + selectedIngredients.length + (minRating > 0 ? 1 : 0);
+
+  // Fetch recipes when database is ready or filters change
   useEffect(() => {
     if (isReady) {
-      fetchRecipes(debouncedSearch ? { query: debouncedSearch } : undefined);
+      const params: RecipeSearchParams = {
+        query: debouncedSearch || undefined,
+        tags: selectedTags.length > 0 ? selectedTags : undefined,
+        ingredients: selectedIngredients.length > 0 ? selectedIngredients : undefined,
+        minRating: minRating > 0 ? minRating : undefined,
+        sortBy,
+        sortOrder,
+      };
+      fetchRecipes(params);
     }
-  }, [isReady, debouncedSearch, fetchRecipes]);
+  }, [isReady, debouncedSearch, selectedTags, selectedIngredients, minRating, sortBy, sortOrder, fetchRecipes]);
+
+  // Filter handlers
+  const handleTagsChange = useCallback((tags: string[]) => {
+    setSelectedTags(tags);
+  }, []);
+
+  const handleIngredientsChange = useCallback((ingredients: string[]) => {
+    setSelectedIngredients(ingredients);
+  }, []);
+
+  const handleMinRatingChange = useCallback((rating: number) => {
+    setMinRating(rating);
+  }, []);
+
+  const handleSortChange = useCallback((newSortBy: RecipeSearchParams['sortBy'], newSortOrder: RecipeSearchParams['sortOrder']) => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setSelectedTags([]);
+    setSelectedIngredients([]);
+    setMinRating(0);
+    setSortBy('updatedAt');
+    setSortOrder('desc');
+  }, []);
 
   const handleRecipeClick = useCallback((recipe: Recipe) => {
     setSelectedRecipe(recipe);
@@ -126,6 +234,117 @@ function AppContent() {
     [editingRecipe, editRecipe, addRecipe, selectedRecipe]
   );
 
+  // Toast controller for notifications
+  const toasterId = useId('toaster');
+  const { dispatchToast } = useToastController(toasterId);
+
+  const handleExportDatabase = useCallback(() => {
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+      downloadDatabaseFile(`recipes-backup-${timestamp}.sqlite`);
+      dispatchToast(
+        <Toast>
+          <ToastTitle>Export Successful</ToastTitle>
+          <ToastBody>Your recipes database has been downloaded.</ToastBody>
+        </Toast>,
+        { intent: 'success' }
+      );
+    } catch (err) {
+      dispatchToast(
+        <Toast>
+          <ToastTitle>Export Failed</ToastTitle>
+          <ToastBody>{err instanceof Error ? err.message : 'Unknown error'}</ToastBody>
+        </Toast>,
+        { intent: 'error' }
+      );
+    }
+  }, [dispatchToast]);
+
+  const handleImportDatabase = useCallback(
+    async (file: File) => {
+      try {
+        const buffer = await file.arrayBuffer();
+        const data = new Uint8Array(buffer);
+        await importDatabaseFile(data);
+        // Refresh the recipes list
+        await fetchRecipes();
+        dispatchToast(
+          <Toast>
+            <ToastTitle>Import Successful</ToastTitle>
+            <ToastBody>Your recipes database has been restored from the backup.</ToastBody>
+          </Toast>,
+          { intent: 'success' }
+        );
+      } catch (err) {
+        dispatchToast(
+          <Toast>
+            <ToastTitle>Import Failed</ToastTitle>
+            <ToastBody>{err instanceof Error ? err.message : 'Invalid database file'}</ToastBody>
+          </Toast>,
+          { intent: 'error' }
+        );
+      }
+    },
+    [dispatchToast, fetchRecipes]
+  );
+
+  const handleExportJson = useCallback(() => {
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+      downloadRecipesAsJson(`recipes-export-${timestamp}.json`);
+      dispatchToast(
+        <Toast>
+          <ToastTitle>Export Successful</ToastTitle>
+          <ToastBody>Your recipes have been exported as JSON.</ToastBody>
+        </Toast>,
+        { intent: 'success' }
+      );
+    } catch (err) {
+      dispatchToast(
+        <Toast>
+          <ToastTitle>Export Failed</ToastTitle>
+          <ToastBody>{err instanceof Error ? err.message : 'Unknown error'}</ToastBody>
+        </Toast>,
+        { intent: 'error' }
+      );
+    }
+  }, [dispatchToast]);
+
+  const handleImportJson = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text();
+        const result = await importRecipesFromJson(text, 'skip');
+        await fetchRecipes();
+        
+        let message = `Imported ${result.imported} recipe(s).`;
+        if (result.skipped > 0) {
+          message += ` Skipped ${result.skipped} duplicate(s).`;
+        }
+        if (result.errors.length > 0) {
+          message += ` ${result.errors.length} error(s) occurred.`;
+        }
+
+        dispatchToast(
+          <Toast>
+            <ToastTitle>Import Complete</ToastTitle>
+            <ToastBody>{message}</ToastBody>
+          </Toast>,
+          { intent: result.errors.length > 0 ? 'warning' : 'success' }
+        );
+      } catch (err) {
+        dispatchToast(
+          <Toast>
+            <ToastTitle>Import Failed</ToastTitle>
+            <ToastBody>{err instanceof Error ? err.message : 'Invalid JSON file'}</ToastBody>
+          </Toast>,
+          { intent: 'error' }
+        );
+      }
+    },
+    [dispatchToast, fetchRecipes]
+  );
+
   if (dbLoading) {
     return (
       <div className={styles.loadingContainer}>
@@ -149,6 +368,7 @@ function AppContent() {
 
   return (
     <div className={styles.app}>
+      <Toaster toasterId={toasterId} />
       <a href="#main-content" className={styles.skipLink}>
         Skip to main content
       </a>
@@ -157,6 +377,10 @@ function AppContent() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onAddRecipe={handleAddRecipe}
+        onExportDatabase={handleExportDatabase}
+        onImportDatabase={handleImportDatabase}
+        onExportJson={handleExportJson}
+        onImportJson={handleImportJson}
       />
 
       {error && (
@@ -170,12 +394,72 @@ function AppContent() {
 
       <div id="main-content">
         {view === 'list' && (
-          <RecipeList
-            recipes={recipes}
-            isLoading={isLoading}
-            onRecipeClick={handleRecipeClick}
-            searchQuery={searchQuery}
-          />
+          <>
+            {/* Mobile filter toggle */}
+            <div className={styles.filterToggle}>
+              <Button
+                icon={showMobileFilters ? <Dismiss24Regular /> : <Filter24Regular />}
+                onClick={() => setShowMobileFilters(!showMobileFilters)}
+              >
+                {showMobileFilters ? 'Hide Filters' : 'Filters'}
+                {activeFilterCount > 0 && (
+                  <span className={styles.filterBadge}>{activeFilterCount}</span>
+                )}
+              </Button>
+            </div>
+
+            {/* Mobile filters (shown when toggled) */}
+            {showMobileFilters && (
+              <div className={styles.mobileSidebar}>
+                <FilterPanel
+                  availableTags={getTags()}
+                  availableIngredients={getIngredients()}
+                  selectedTags={selectedTags}
+                  selectedIngredients={selectedIngredients}
+                  minRating={minRating}
+                  sortBy={sortBy}
+                  sortOrder={sortOrder}
+                  onTagsChange={handleTagsChange}
+                  onIngredientsChange={handleIngredientsChange}
+                  onMinRatingChange={handleMinRatingChange}
+                  onSortChange={handleSortChange}
+                  onClearFilters={handleClearFilters}
+                />
+              </div>
+            )}
+
+            <div className={styles.mainLayout}>
+              {/* Desktop sidebar */}
+              <aside className={`${styles.sidebar} ${styles.desktopSidebar}`}>
+                <FilterPanel
+                  availableTags={getTags()}
+                  availableIngredients={getIngredients()}
+                  selectedTags={selectedTags}
+                  selectedIngredients={selectedIngredients}
+                  minRating={minRating}
+                  sortBy={sortBy}
+                  sortOrder={sortOrder}
+                  onTagsChange={handleTagsChange}
+                  onIngredientsChange={handleIngredientsChange}
+                  onMinRatingChange={handleMinRatingChange}
+                  onSortChange={handleSortChange}
+                  onClearFilters={handleClearFilters}
+                />
+              </aside>
+
+              {/* Recipe list content */}
+              <div className={styles.content}>
+                <RecipeList
+                  recipes={recipes}
+                  isLoading={isLoading}
+                  onRecipeClick={handleRecipeClick}
+                  searchQuery={searchQuery}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                />
+              </div>
+            </div>
+          </>
         )}
 
         {view === 'detail' && selectedRecipe && (
@@ -213,11 +497,13 @@ function App() {
   }, []);
 
   return (
-    <FluentProvider theme={isDark ? webDarkTheme : webLightTheme}>
-      <DatabaseProvider>
-        <AppContent />
-      </DatabaseProvider>
-    </FluentProvider>
+    <ErrorBoundary>
+      <FluentProvider theme={isDark ? webDarkTheme : webLightTheme}>
+        <DatabaseProvider>
+          <AppContent />
+        </DatabaseProvider>
+      </FluentProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -18,6 +18,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     steps: JSON.parse((row.steps as string) || '[]'),
     notes: row.notes as string | undefined,
     tags: JSON.parse((row.tags as string) || '[]'),
+    rating: row.rating as number | undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -39,8 +40,8 @@ export async function createRecipe(data: RecipeFormData): Promise<Recipe> {
   };
 
   db.run(
-    `INSERT INTO recipes (id, title, description, photos, servings, prep_time, cook_time, ingredients, steps, notes, tags, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO recipes (id, title, description, photos, servings, prep_time, cook_time, ingredients, steps, notes, tags, rating, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       recipe.id,
       recipe.title,
@@ -53,6 +54,7 @@ export async function createRecipe(data: RecipeFormData): Promise<Recipe> {
       JSON.stringify(recipe.steps),
       recipe.notes || null,
       JSON.stringify(recipe.tags),
+      recipe.rating || null,
       recipe.createdAt,
       recipe.updatedAt,
     ]
@@ -120,6 +122,12 @@ export function getAllRecipes(params?: RecipeSearchParams): Recipe[] {
     params.tags.forEach((tag) => bindings.push(`%"${tag}"%`));
   }
 
+  // Filter by minimum rating
+  if (params?.minRating && params.minRating >= 1 && params.minRating <= 5) {
+    conditions.push('rating >= ?');
+    bindings.push(params.minRating);
+  }
+
   // Add conditions to query
   if (conditions.length) {
     sql += ' WHERE ' + conditions.join(' AND ');
@@ -132,6 +140,7 @@ export function getAllRecipes(params?: RecipeSearchParams): Recipe[] {
     title: 'title',
     createdAt: 'created_at',
     updatedAt: 'updated_at',
+    rating: 'rating',
   };
   sql += ` ORDER BY ${columnMap[sortBy]} ${sortOrder.toUpperCase()}`;
 
@@ -171,7 +180,7 @@ export async function updateRecipe(id: string, data: Partial<RecipeFormData>): P
     `UPDATE recipes SET
       title = ?, description = ?, photos = ?, servings = ?,
       prep_time = ?, cook_time = ?, ingredients = ?, steps = ?,
-      notes = ?, tags = ?, updated_at = ?
+      notes = ?, tags = ?, rating = ?, updated_at = ?
      WHERE id = ?`,
     [
       updated.title,
@@ -184,6 +193,7 @@ export async function updateRecipe(id: string, data: Partial<RecipeFormData>): P
       JSON.stringify(updated.steps),
       updated.notes || null,
       JSON.stringify(updated.tags),
+      updated.rating || null,
       updated.updatedAt,
       id,
     ]

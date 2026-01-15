@@ -15,6 +15,7 @@ export const CREATE_RECIPES_TABLE = `
     steps TEXT NOT NULL DEFAULT '[]',
     notes TEXT,
     tags TEXT DEFAULT '[]',
+    rating INTEGER,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );

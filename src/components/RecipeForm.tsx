@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   makeStyles,
   tokens,
@@ -24,6 +24,7 @@ import {
   TagPickerGroup,
 } from '@fluentui/react-components';
 import { Add24Regular, Delete24Regular, ArrowUp24Regular, ArrowDown24Regular } from '@fluentui/react-icons';
+import { StarRating } from './StarRating';
 import type { Recipe, RecipeFormData, Ingredient, ValidationError } from '../types';
 
 const useStyles = makeStyles({
@@ -148,7 +149,26 @@ export function RecipeForm({ recipe, open, onOpenChange, onSubmit, existingTags 
   const [notes, setNotes] = useState(recipe?.notes || '');
   const [tags, setTags] = useState<string[]>(recipe?.tags || []);
   const [photos, setPhotos] = useState<string[]>(recipe?.photos || []);
+  const [rating, setRating] = useState<number>(recipe?.rating || 0);
   const [errors, setErrors] = useState<ValidationError[]>([]);
+
+  // Reset form state when recipe prop changes or dialog opens
+  useEffect(() => {
+    if (open) {
+      setTitle(recipe?.title || '');
+      setDescription(recipe?.description || '');
+      setServings(recipe?.servings || 4);
+      setPrepTime(recipe?.prepTime);
+      setCookTime(recipe?.cookTime);
+      setIngredients(recipe?.ingredients || [{ name: '', quantity: undefined, unit: '' }]);
+      setSteps(recipe?.steps || ['']);
+      setNotes(recipe?.notes || '');
+      setTags(recipe?.tags || []);
+      setPhotos(recipe?.photos || []);
+      setRating(recipe?.rating || 0);
+      setErrors([]);
+    }
+  }, [recipe, open]);
 
   const allTagOptions = Array.from(new Set([...COMMON_TAGS, ...existingTags])).sort();
 
@@ -193,6 +213,7 @@ export function RecipeForm({ recipe, open, onOpenChange, onSubmit, existingTags 
       notes: notes.trim() || undefined,
       tags,
       photos,
+      rating: rating || undefined,
     };
 
     onSubmit(data);
@@ -236,28 +257,74 @@ export function RecipeForm({ recipe, open, onOpenChange, onSubmit, existingTags 
     setSteps(updated);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /**
+   * Compress and resize an image to reduce storage size
+   * @param file - The image file to compress
+   * @param maxWidth - Maximum width (default 1200px)
+   * @param quality - JPEG quality (0-1, default 0.8)
+   */
+  const compressImage = (file: File, maxWidth = 1200, quality = 0.8): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Scale down if width exceeds maxWidth
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Failed to get canvas context'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to JPEG for better compression
+          const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedBase64);
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach((file) => {
-      if (photos.length >= 5) return;
-      if (file.size > 2 * 1024 * 1024) {
-        alert('Image must be 2MB or less');
-        return;
+    for (const file of Array.from(files)) {
+      if (photos.length >= 5) break;
+      if (file.size > 10 * 1024 * 1024) { // Allow up to 10MB, will be compressed
+        alert('Image must be 10MB or less');
+        continue;
       }
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
         alert('Only JPEG, PNG, and WebP images are supported');
-        return;
+        continue;
       }
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        setPhotos((prev) => [...prev, base64]);
-      };
-      reader.readAsDataURL(file);
-    });
+      try {
+        const compressedBase64 = await compressImage(file);
+        setPhotos((prev) => [...prev, compressedBase64]);
+      } catch (err) {
+        console.error('Failed to compress image:', err);
+        alert('Failed to process image');
+      }
+    }
 
     e.target.value = '';
   };
@@ -326,6 +393,10 @@ export function RecipeForm({ recipe, open, onOpenChange, onSubmit, existingTags 
                   />
                 </Field>
               </div>
+
+              <Field label="Rating">
+                <StarRating rating={rating} onChange={setRating} size="large" showEmpty />
+              </Field>
 
               <div className={styles.photoSection}>
                 <Label>Photos (max 5)</Label>

@@ -36,6 +36,8 @@ export interface Recipe {
   notes?: string;
   /** Categories (e.g., "vegetarian", "dessert") */
   tags: string[];
+  /** Rating from 1-5 stars (optional) */
+  rating?: number;
   /** Auto-generated timestamp */
   createdAt: string;
   /** Auto-updated timestamp */
@@ -56,6 +58,7 @@ export interface RecipeFormData {
   steps: string[];
   notes?: string;
   tags: string[];
+  rating?: number;
 }
 
 /**
@@ -65,7 +68,8 @@ export interface RecipeSearchParams {
   query?: string;
   ingredients?: string[];
   tags?: string[];
-  sortBy?: 'title' | 'createdAt' | 'updatedAt';
+  minRating?: number;
+  sortBy?: 'title' | 'createdAt' | 'updatedAt' | 'rating';
   sortOrder?: 'asc' | 'desc';
 }
 
