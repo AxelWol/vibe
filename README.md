@@ -2,6 +2,9 @@
 
 A personal recipe management web application built with React, TypeScript, and Fluent UI. Store, organize, search, and manage your cooking recipes with an intuitive, accessible interface.
 
+* **GitHub Repository** : [https://github.com/AxelWol/vibe](vscode-file://vscode-app/c:/Users/axelw/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/out/vs/code/electron-browser/workbench/workbench.html)
+* **Live on GitHub Pages** : [https://axelwol.github.io/vibe/](vscode-file://vscode-app/c:/Users/axelw/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/out/vs/code/electron-browser/workbench/workbench.html)
+
 ## Features
 
 - ✅ **Create & Edit Recipes** - Full recipe management with ingredients, steps, photos, and notes
@@ -46,17 +49,17 @@ The app will be available at `http://localhost:5173`
 
 ### Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build |
-| `npm run lint` | Run ESLint |
-| `npm run lint:fix` | Fix ESLint errors |
-| `npm run format` | Format code with Prettier |
-| `npm run test` | Run tests in watch mode |
-| `npm run test:run` | Run tests once |
-| `npm run test:coverage` | Run tests with coverage |
+| Command                   | Description               |
+| ------------------------- | ------------------------- |
+| `npm run dev`           | Start development server  |
+| `npm run build`         | Build for production      |
+| `npm run preview`       | Preview production build  |
+| `npm run lint`          | Run ESLint                |
+| `npm run lint:fix`      | Fix ESLint errors         |
+| `npm run format`        | Format code with Prettier |
+| `npm run test`          | Run tests in watch mode   |
+| `npm run test:run`      | Run tests once            |
+| `npm run test:coverage` | Run tests with coverage   |
 
 ## Project Structure
 
