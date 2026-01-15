@@ -1,0 +1,13 @@
+{
+  "name": "vibe",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Axel Wolters <axel.wolters@sk.hamburg.de>",
+  "license": "EUPL-1.2",
+  "type": "commonjs"
+}
