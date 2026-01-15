@@ -25,6 +25,93 @@ async function runMigrations(database: Database): Promise<void> {
 }
 
 /**
+ * Load sample recipes on first app load
+ */
+async function loadSampleRecipes(): Promise<void> {
+  try {
+    // Fetch sample recipes from public folder
+    // Use import.meta.env.BASE_URL for correct path in production
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    const response = await fetch(`${baseUrl}sample-recipes.json`);
+    if (!response.ok) {
+      console.warn('Sample recipes not found, starting with empty database');
+      return;
+    }
+    const jsonString = await response.text();
+    const result = await importRecipesFromJsonInternal(jsonString);
+    console.log(`Loaded ${result.imported} sample recipes`);
+  } catch (error) {
+    console.warn('Failed to load sample recipes:', error);
+  }
+}
+
+/**
+ * Internal import function that doesn't save to IndexedDB (called during init)
+ */
+async function importRecipesFromJsonInternal(jsonString: string): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  const result = { imported: 0, skipped: 0, errors: [] as string[] };
+  
+  let data: { version?: number; recipes?: ImportedRecipe[] } | ImportedRecipe[];
+  try {
+    data = JSON.parse(jsonString);
+  } catch {
+    console.error('Invalid JSON format in sample recipes');
+    return result;
+  }
+
+  const recipes: ImportedRecipe[] = Array.isArray(data) ? data : (data.recipes || []);
+  
+  if (!Array.isArray(recipes)) {
+    return result;
+  }
+
+  const database = getDatabase();
+  const { v4: uuidv4 } = await import('uuid');
+
+  for (const recipe of recipes) {
+    try {
+      if (!recipe.title || !Array.isArray(recipe.ingredients) || !Array.isArray(recipe.steps)) {
+        continue;
+      }
+
+      const id = recipe.id || uuidv4();
+      const now = new Date().toISOString();
+      const prepTime = recipe.prep_time ?? recipe.prepTime ?? null;
+      const cookTime = recipe.cook_time ?? recipe.cookTime ?? null;
+      const createdAt = recipe.created_at ?? recipe.createdAt ?? now;
+      const updatedAt = recipe.updated_at ?? recipe.updatedAt ?? now;
+
+      database.run(
+        `INSERT INTO recipes (id, title, description, photos, servings, prep_time, cook_time, ingredients, steps, notes, tags, rating, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          recipe.title,
+          recipe.description || null,
+          JSON.stringify(recipe.photos || []),
+          recipe.servings || 4,
+          prepTime,
+          cookTime,
+          JSON.stringify(recipe.ingredients),
+          JSON.stringify(recipe.steps),
+          recipe.notes || null,
+          JSON.stringify(recipe.tags || []),
+          recipe.rating || null,
+          createdAt,
+          updatedAt,
+        ]
+      );
+      result.imported++;
+    } catch (err) {
+      result.errors.push(`Failed to import "${recipe.title}": ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
+  await saveToIndexedDB();
+  return result;
+}
+
+/**
  * Request persistent storage from the browser
  * This prevents the browser from automatically clearing the IndexedDB data
  */
@@ -91,6 +178,9 @@ export async function initDatabase(): Promise<Database> {
       db.run(schema);
     }
     await saveToIndexedDB();
+    
+    // Load sample recipes on first run
+    await loadSampleRecipes();
   }
 
   return db;
