@@ -1,4 +1,5 @@
 import initSqlJs, { Database } from 'sql.js';
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { ALL_SCHEMAS } from './schema';
 
 const DB_NAME = 'recipe-app-db';
@@ -148,8 +149,7 @@ export async function initDatabase(): Promise<Database> {
   await requestPersistentStorage();
 
   const SQL = await initSqlJs({
-    // Load sql.js wasm from CDN
-    locateFile: (file) => `https://sql.js.org/dist/${file}`,
+    locateFile: () => sqlWasmUrl,
   });
 
   // Try to load existing database from IndexedDB
@@ -473,7 +473,7 @@ export function exportDatabaseFile(): Uint8Array {
  */
 export async function importDatabaseFile(data: Uint8Array): Promise<void> {
   const SQL = await initSqlJs({
-    locateFile: (file) => `https://sql.js.org/dist/${file}`,
+    locateFile: () => sqlWasmUrl,
   });
 
   // Try to open the database to verify it's valid
